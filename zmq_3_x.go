@@ -181,6 +181,34 @@ func (s *Socket) Recv(flags SendRecvOption) (data []byte, err error) {
 	return
 }
 
+// Receive a single zmq_msg_t and wrap it in Message.
+func (s *Socket) RecvMessage(flags SendRecvOption) (msg *Message, err error) {
+	// Allocate and initialise a new zmq_msg_t.
+	var m C.zmq_msg_t
+	var rc C.int
+	if rc, err = C.zmq_msg_init(&m); rc != 0 {
+		err = casterr(err)
+		return
+	}
+
+	// Receive into the message.
+	if rc, err = C.zmq_recvmsg(s.s, &m, C.int(flags)); rc != 0 {
+		C.zmq_msg_close(&m)
+		err = casterr(err)
+		return
+	}
+
+	// Copy message data into a byte slice.
+	// FIXME Ideally this wouldn't require a copy.
+	size := C.zmq_msg_size(&m)
+	data := C.GoBytes(C.zmq_msg_data(&m), C.int(size))
+
+	return &Message{
+		m:    &m,
+		data: data,
+	}, nil
+}
+
 // Register a monitoring callback endpoint.
 // int zmq_socket_monitor (void *s, const char *addr, int events);
 func (s *Socket) Monitor(address string, events Event) error {

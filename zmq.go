@@ -445,6 +445,33 @@ func Device(t DeviceType, in, out *Socket) error {
 	return errors.New("zmq_device() returned unexpectedly.")
 }
 
+/**
+ * Message does not yet implement the full zmq_msg_t API,
+ * it merely enables us to postpone releasing zmq_msg_t.
+ */
+type Message struct {
+	m    *C.zmq_msg_t
+	data []byte
+}
+
+func (m *Message) GetData() (data []byte) {
+	return m.data
+}
+
+func (m *Message) Close() error {
+	if m.m == nil {
+		return errors.New("The message is already closed.")
+	}
+
+	_, err := C.zmq_msg_close(m.m)
+	if err != nil {
+		return casterr(err)
+	}
+	m.m = nil
+
+	return nil
+}
+
 // XXX For now, this library abstracts zmq_msg_t out of the API.
 // int zmq_msg_init (zmq_msg_t *msg);
 // int zmq_msg_init_size (zmq_msg_t *msg, size_t size);
