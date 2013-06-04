@@ -377,8 +377,15 @@ func (s *Socket) SendMultipart(parts [][]byte, flags SendRecvOption) (err error)
 // SendZeroCopy is suitable only for large messages since it (for now)
 // incorporates some synchronization overhead in its Go part.
 func (s *Socket) SendZeroCopy(data []byte, flags SendRecvOption) error {
+	zcLock.Lock()
+	seq := zcSeq
+	zcData[seq] = data
+	zcSeq++
+	zcLock.Unlock()
+
 	rc, err := C.gozmq_zc_send(s.apiSocket(),
-		unsafe.Pointer(&data[0]), C.size_t(len(data)), C.int(flags))
+		unsafe.Pointer(&data[0]), C.size_t(len(data)),
+		C.int(flags), C.int(seq))
 	if rc == -1 {
 		return casterr(err)
 	}
@@ -388,27 +395,15 @@ func (s *Socket) SendZeroCopy(data []byte, flags SendRecvOption) error {
 // Global state necessary for the zero copy cleanup callback.
 // FIXME: Try to get rid of this global state.
 var (
-	zcSeq     int
-	zcSeqLock sync.Mutex
-
-	zcData     map[int][]byte = make(map[int][]byte)
-	zcDataLock sync.Mutex
+	zcSeq  int
+	zcData map[int][]byte = make(map[int][]byte)
+	zcLock sync.Mutex
 )
-
-//export gozmq_zc_seq
-func gozmq_zc_seq() C.int {
-	zcSeqLock.Lock()
-	defer zcSeqLock.Unlock()
-
-	zcSeq++
-	return C.int(zcSeq)
-}
 
 //export gozmq_zc_free_msg
 func gozmq_zc_free_msg(seq C.int) {
-	zcDataLock.Lock()
-	defer zcDataLock.Unlock()
-
+	zcLock.Lock()
+	defer zcLock.Unlock()
 	delete(zcData, int(seq))
 }
 

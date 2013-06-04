@@ -23,14 +23,14 @@ extern void gozmq_zc_free_msg(int seq);
 static void free_msg_wrap(void *data, void *hint);
 
 int
-gozmq_zc_send(void *socket, void *data, size_t size, int flags)
+gozmq_zc_send(void *socket, void *data, size_t size, int flags, int seq)
 {
 	zmq_msg_t msg;
 
-	int *seq = malloc(sizeof(int));
-	*seq = gozmq_zc_seq();
+	int *hint = malloc(sizeof(seq));
+	*hint = seq;
 
-	zmq_msg_init_data(&msg, data, size, free_msg_wrap, seq);
+	zmq_msg_init_data(&msg, data, size, free_msg_wrap, hint);
 
 #if ZMQ_VERSION_MAJOR == 3
 	if (zmq_sendmsg(socket, &msg, flags) == -1)
