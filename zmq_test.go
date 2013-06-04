@@ -16,12 +16,12 @@
 package gozmq
 
 import (
+	"crypto/rand"
 	"log"
 	"runtime"
 	"syscall"
 	"testing"
 	"time"
-	"crypto/rand"
 )
 
 const ADDRESS1 = "tcp://127.0.0.1:23456"
@@ -481,19 +481,19 @@ func BenchmarkSendReceive1MBinprocZC(b *testing.B) {
 }
 
 func BenchmarkSendReceive10MBinproc(b *testing.B) {
-	doBenchmarkSendReceive(b, 10 * 1e6, ADDRESS_INPROC)
+	doBenchmarkSendReceive(b, 10*1e6, ADDRESS_INPROC)
 }
 
 func BenchmarkSendReceive10MBinprocZC(b *testing.B) {
-	doBenchmarkSendReceiveZC(b, 10 * 1e6, ADDRESS_INPROC)
+	doBenchmarkSendReceiveZC(b, 10*1e6, ADDRESS_INPROC)
 }
 
 func BenchmarkSendReceive100MBinproc(b *testing.B) {
-	doBenchmarkSendReceive(b, 100 * 1e6, ADDRESS_INPROC)
+	doBenchmarkSendReceive(b, 100*1e6, ADDRESS_INPROC)
 }
 
 func BenchmarkSendReceive100MBinprocZC(b *testing.B) {
-	doBenchmarkSendReceiveZC(b, 100 * 1e6, ADDRESS_INPROC)
+	doBenchmarkSendReceiveZC(b, 100*1e6, ADDRESS_INPROC)
 }
 
 // A helper to make tests less verbose
