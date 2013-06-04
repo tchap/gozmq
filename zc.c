@@ -17,7 +17,7 @@
 #include <stdlib.h>
 #include <zmq.h>
 
-extern int gozmq_zc_seq();
+extern int  gozmq_zc_seq();
 extern void gozmq_zc_free_msg(int seq);
 
 static void free_msg_wrap(void *data, void *hint);
@@ -32,8 +32,16 @@ gozmq_zc_send(void *socket, void *data, size_t size, int flags)
 
 	zmq_msg_init_data(&msg, data, size, free_msg_wrap, seq);
 
+#if ZMQ_VERSION_MAJOR == 3
 	if (zmq_sendmsg(socket, &msg, flags) == -1)
 		return -1;
+#elif ZMQ_VERSION_MAJOR == 2
+	if (zmq_send(socket, &msg, flags) == -1)
+		return -1;
+#else
+#error Only libzmq 2.x and 3.x is supported.
+#endif
+
 	return 0;
 }
 

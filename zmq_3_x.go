@@ -23,12 +23,10 @@ package gozmq
 #include <zmq.h>
 #include <stdlib.h>
 #include <string.h>
-#include "zc.h"
 */
 import "C"
 import (
 	"errors"
-	"sync"
 	"unsafe"
 )
 
@@ -153,41 +151,6 @@ func (s *Socket) Send(data []byte, flags SendRecvOption) error {
 		return casterr(err)
 	}
 	return nil
-}
-
-// Send a message to the socket using 0MQ zero copy.
-// ZeroCopySend is suitable only for large messages since it (for now)
-// incorporates some synchronization overhead in its Go part.
-func (s *Socket) ZeroCopySend(data []byte, flags SendRecvOption) error {
-	rc, err := C.gozmq_zc_send(s.apiSocket(),
-		unsafe.Pointer(&data[0]), C.size_t(len(data)), C.int(flags))
-	if rc == -1 {
-		return casterr(err)
-	}
-	return nil
-}
-
-var (
-	zcSeq  int
-	zcData map[int][]byte = make(map[int][]byte)
-	zcLock sync.Mutex
-)
-
-//export gozmq_zc_seq
-func gozmq_zc_seq() C.int {
-	zcLock.Lock()
-	defer zcLock.Unlock()
-
-	zcSeq++
-	return C.int(zcSeq)
-}
-
-//export gozmq_zc_free_msg
-func gozmq_zc_free_msg(seq C.int) {
-	zcLock.Lock()
-	defer zcLock.Unlock()
-
-	delete(zcData, int(seq))
 }
 
 // Receive a message from the socket.
