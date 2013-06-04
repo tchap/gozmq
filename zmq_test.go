@@ -21,6 +21,7 @@ import (
 	"syscall"
 	"testing"
 	"time"
+	"crypto/rand"
 )
 
 const ADDRESS1 = "tcp://127.0.0.1:23456"
@@ -241,6 +242,74 @@ func TestMultipart(t *testing.T) {
 	<-finished
 }
 
+const (
+	TEST_ZEROCOPY_ADDRESS = "inproc://TestZeroCopy"
+	TEST_ZEROCOPY_DATALEN = 1000
+)
+
+func TestZeroCopy(t *testing.T) {
+	te := NewTestEnv(t)
+	defer te.Close()
+
+	out := te.NewBoundSocket(PULL, TEST_ZEROCOPY_ADDRESS)
+	in := te.NewConnectedSocket(PUSH, TEST_ZEROCOPY_ADDRESS)
+
+	data := make([]byte, TEST_ZEROCOPY_DATALEN)
+	n, err := rand.Read(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n == 0 {
+		panic("No random data was generated.")
+	}
+	if n != TEST_ZEROCOPY_DATALEN {
+		t.Log("Less random data than requested was generated.")
+	}
+
+	exit := make(chan bool, 2)
+
+	go func() {
+		for _, b := range data {
+			ex := in.SendZeroCopy([]byte{b}, 0)
+			if ex != nil {
+				t.Error(ex)
+				exit <- true
+				return
+			}
+		}
+		exit <- true
+	}()
+
+	go func() {
+		for _, b := range data {
+			msg, ex := out.Recv(0)
+			if ex != nil {
+				t.Error(ex)
+				exit <- true
+				return
+			}
+			if msg[0] != b {
+				t.Error("Unexpected data was received.")
+				exit <- true
+				return
+			}
+		}
+		exit <- true
+	}()
+
+	timeout := time.After(time.Second)
+
+	for i := 0; i < 2; i++ {
+		select {
+		case <-exit:
+			continue
+		case <-timeout:
+			t.Error("Test timed out.")
+			return
+		}
+	}
+}
+
 func TestPoll(t *testing.T) {
 	te := NewTestEnv(t)
 	defer te.Close()
@@ -348,6 +417,29 @@ func doBenchmarkSendReceive(b *testing.B, size int, addr string) {
 	}
 }
 
+func doBenchmarkSendReceiveZC(b *testing.B, size int, addr string) {
+	// since this is a benchmark it should probably call
+	// this package's api functions directly rather than
+	// using the testEnv wrappers
+	b.StopTimer()
+	data := make([]byte, size)
+
+	te := NewTestEnv(nil)
+	defer te.Close()
+	b.StartTimer()
+
+	out := te.NewBoundSocket(PUSH, ADDRESS1)
+	in := te.NewConnectedSocket(PULL, ADDRESS1)
+
+	for i := 0; i < b.N; i++ {
+		te.SendZeroCopy(out, data, 0)
+		d2 := te.Recv(in, 0)
+		if len(d2) != size {
+			panic("Bad message size received")
+		}
+	}
+}
+
 func BenchmarkSendReceive1Btcp(b *testing.B) {
 	doBenchmarkSendReceive(b, 1, ADDRESS1)
 }
@@ -360,16 +452,48 @@ func BenchmarkSendReceive1MBtcp(b *testing.B) {
 	doBenchmarkSendReceive(b, 1e6, ADDRESS1)
 }
 
+func BenchmarkSendReceive1MBtcpZC(b *testing.B) {
+	doBenchmarkSendReceiveZC(b, 1e6, ADDRESS1)
+}
+
 func BenchmarkSendReceive1Binproc(b *testing.B) {
 	doBenchmarkSendReceive(b, 1, ADDRESS_INPROC)
+}
+
+func BenchmarkSendReceive1BinprocZC(b *testing.B) {
+	doBenchmarkSendReceiveZC(b, 1, ADDRESS_INPROC)
 }
 
 func BenchmarkSendReceive1KBinproc(b *testing.B) {
 	doBenchmarkSendReceive(b, 1e3, ADDRESS_INPROC)
 }
 
+func BenchmarkSendReceive1KBinprocZC(b *testing.B) {
+	doBenchmarkSendReceiveZC(b, 1e3, ADDRESS_INPROC)
+}
+
 func BenchmarkSendReceive1MBinproc(b *testing.B) {
 	doBenchmarkSendReceive(b, 1e6, ADDRESS_INPROC)
+}
+
+func BenchmarkSendReceive1MBinprocZC(b *testing.B) {
+	doBenchmarkSendReceiveZC(b, 1e6, ADDRESS_INPROC)
+}
+
+func BenchmarkSendReceive10MBinproc(b *testing.B) {
+	doBenchmarkSendReceive(b, 10 * 1e6, ADDRESS_INPROC)
+}
+
+func BenchmarkSendReceive10MBinprocZC(b *testing.B) {
+	doBenchmarkSendReceiveZC(b, 10 * 1e6, ADDRESS_INPROC)
+}
+
+func BenchmarkSendReceive100MBinproc(b *testing.B) {
+	doBenchmarkSendReceive(b, 100 * 1e6, ADDRESS_INPROC)
+}
+
+func BenchmarkSendReceive100MBinprocZC(b *testing.B) {
+	doBenchmarkSendReceiveZC(b, 100 * 1e6, ADDRESS_INPROC)
 }
 
 // A helper to make tests less verbose
@@ -438,6 +562,12 @@ func (te *testEnv) Close() {
 
 func (te *testEnv) Send(sock *Socket, data []byte, flags SendRecvOption) {
 	if err := sock.Send(data, flags); err != nil {
+		te.t.Errorf("Send failed")
+	}
+}
+
+func (te *testEnv) SendZeroCopy(sock *Socket, data []byte, flags SendRecvOption) {
+	if err := sock.SendZeroCopy(data, flags); err != nil {
 		te.t.Errorf("Send failed")
 	}
 }
