@@ -374,37 +374,38 @@ func (s *Socket) SendMultipart(parts [][]byte, flags SendRecvOption) (err error)
 }
 
 // Send a message to the socket using 0MQ zero copy.
-// SendZeroCopy is suitable only for large messages since it (for now)
-// incorporates some synchronization overhead in its Go part.
-func (s *Socket) SendZeroCopy(data []byte, flags SendRecvOption) error {
-	zcLock.Lock()
-	seq := zcSeq
-	zcData[seq] = data
-	zcSeq++
-	zcLock.Unlock()
+func (s *Socket) SendZeroCopy(data []byte, flags SendRecvOption,
+	hint unsafe.Pointer) error {
 
-	rc, err := C.gozmq_zc_send(s.apiSocket(),
+	if ZeroCopyFreeFunc == nil {
+		panic("The zero copy cleanup function is not set.")
+	}
+
+	rc, err := C.gozmq_zc_sendmsg(s.apiSocket(),
 		unsafe.Pointer(&data[0]), C.size_t(len(data)),
-		C.int(flags), C.int(seq))
+		C.int(flags), hint)
 	if rc == -1 {
 		return casterr(err)
 	}
 	return nil
 }
 
-// Global state necessary for the zero copy cleanup callback.
-// FIXME: Try to get rid of this global state.
-var (
-	zcSeq  int
-	zcData map[int][]byte = make(map[int][]byte)
-	zcLock sync.Mutex
-)
+// ZCFreeFunc is the type of the user-defined cleanup callback for zero copy.
+type ZCFreeFunc func(data, hint unsafe.Pointer)
 
-//export gozmq_zc_free_msg
-func gozmq_zc_free_msg(seq C.int) {
-	zcLock.Lock()
-	defer zcLock.Unlock()
-	delete(zcData, int(seq))
+// ZeroCopyFreeFunc is the user-defined cleaning function that is being invoked
+// from the underlying zero copy callback written in C.
+// SendZeroCopy panics if this variable is not set.
+var ZeroCopyFreeFunc ZCFreeFunc
+
+//export gozmq_zc_free_fn
+func gozmq_zc_free_fn(data, hint unsafe.Pointer) {
+	if ZeroCopyFreeFunc == nil {
+		panic("The zero copy cleanup function is not set.")
+	}
+	// If you are extremely lucky you can still manage to set ZeroCopyFreeFunc
+	// to nil after the check if performed. Be unlucky.
+	ZeroCopyFreeFunc(data, hint)
 }
 
 // Receive a multipart message.
@@ -480,6 +481,56 @@ func Device(t DeviceType, in, out *Socket) error {
 	return errors.New("zmq_device() returned unexpectedly.")
 }
 
+// ZCFrameRegister is a helper struct for testing zero copy.
+// This is a workaround for the fact that cgo cannot be used in tests.
+// It can as well serve as an example of how to keep a reference to the data
+// that were passed to SendZeroCopy.
+type ZCFrameRegister struct {
+	seq  int
+	refs map[int][]byte
+	lock sync.Mutex
+}
+
+// ZCFrameRegister constructor.
+func NewFrameRegister() (r *ZCFrameRegister) {
+	return &ZCFrameRegister{
+		refs: make(map[int][]byte),
+	}
+}
+
+// Add a frame to the register and return the hint to be passed into
+// SendZeroCopy. No extra work required.
+func (r *ZCFrameRegister) Add(frame []byte) (hint unsafe.Pointer) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	// Leave this simple, we will never overflow that fast so that we would find
+	// some leftovers from the previous round.
+	i := r.seq
+	r.seq++
+	r.refs[i] = frame
+
+	// Allocate space on the heap and return the hint.
+	var ph *C.int
+	ph = (*C.int)(C.malloc(C.size_t(unsafe.Sizeof(*ph))))
+	*ph = C.int(i)
+
+	return unsafe.Pointer(ph)
+}
+
+// Remove a frame from the register. This method is compatible with the cleanup
+// callback type required by SendZeroCopy so it can be used directly in that way
+// thanks to method values introduced in Go 1.1
+func (r *ZCFrameRegister) Remove(data, hint unsafe.Pointer) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	i := *(*int)(hint)
+
+	C.free(hint)
+	delete(r.refs, i)
+}
+
 // XXX For now, this library abstracts zmq_msg_t out of the API.
 // int zmq_msg_init (zmq_msg_t *msg);
 // int zmq_msg_init_size (zmq_msg_t *msg, size_t size);
@@ -488,3 +539,5 @@ func Device(t DeviceType, in, out *Socket) error {
 // void *zmq_msg_data (zmq_msg_t *msg);
 // int zmq_msg_copy (zmq_msg_t *dest, zmq_msg_t *src);
 // int zmq_msg_move (zmq_msg_t *dest, zmq_msg_t *src);
+
+

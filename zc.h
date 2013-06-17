@@ -17,6 +17,7 @@
 #ifndef GOZMQ_ZC_H
 #define GOZMQ_ZC_H
 
-int gozmq_zc_send(void *socket, void *data, size_t size, int flags, int seq);
+int gozmq_zc_sendmsg(void *socket, void *data, size_t datalen,
+		int flags, void *hint);
 
 #endif

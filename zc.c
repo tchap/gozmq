@@ -17,20 +17,15 @@
 #include <stdlib.h>
 #include <zmq.h>
 
-extern int  gozmq_zc_seq();
-extern void gozmq_zc_free_msg(int seq);
-
-static void free_msg_wrap(void *data, void *hint);
+// Bridge into Go.
+extern void gozmq_zc_free_fn(void *data, void *hint);
 
 int
-gozmq_zc_send(void *socket, void *data, size_t size, int flags, int seq)
+gozmq_zc_sendmsg(void *socket, void *data, size_t dlen, int flags, void *hint)
 {
 	zmq_msg_t msg;
-
-	int *hint = malloc(sizeof(seq));
-	*hint = seq;
-
-	zmq_msg_init_data(&msg, data, size, free_msg_wrap, hint);
+	if (zmq_msg_init_data(&msg, data, dlen, gozmq_zc_free_fn, hint) == -1)
+		return -1;
 
 #if ZMQ_VERSION_MAJOR == 3
 	if (zmq_sendmsg(socket, &msg, flags) == -1)
@@ -43,11 +38,4 @@ gozmq_zc_send(void *socket, void *data, size_t size, int flags, int seq)
 #endif
 
 	return 0;
-}
-
-static void
-free_msg_wrap(void *data, void *hint)
-{
-	gozmq_zc_free_msg(*(int*)hint);
-	free(hint);
 }

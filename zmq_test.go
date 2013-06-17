@@ -22,7 +22,14 @@ import (
 	"syscall"
 	"testing"
 	"time"
+	"unsafe"
 )
+
+var zcRegister *ZCFrameRegister = NewFrameRegister()
+
+func init() {
+	ZeroCopyFreeFunc = zcRegister.Remove
+}
 
 const ADDRESS1 = "tcp://127.0.0.1:23456"
 const ADDRESS2 = "tcp://127.0.0.1:23457"
@@ -270,7 +277,8 @@ func TestZeroCopy(t *testing.T) {
 
 	go func() {
 		for _, b := range data {
-			ex := in.SendZeroCopy([]byte{b}, 0)
+			bs := []byte{b}
+			ex := in.SendZeroCopy(bs, 0, zcRegister.Add(bs))
 			if ex != nil {
 				t.Error(ex)
 				exit <- true
@@ -432,7 +440,7 @@ func doBenchmarkSendReceiveZC(b *testing.B, size int, addr string) {
 	in := te.NewConnectedSocket(PULL, ADDRESS1)
 
 	for i := 0; i < b.N; i++ {
-		te.SendZeroCopy(out, data, 0)
+		te.SendZeroCopy(out, data, 0, zcRegister.Add(data))
 		d2 := te.Recv(in, 0)
 		if len(d2) != size {
 			panic("Bad message size received")
@@ -566,8 +574,10 @@ func (te *testEnv) Send(sock *Socket, data []byte, flags SendRecvOption) {
 	}
 }
 
-func (te *testEnv) SendZeroCopy(sock *Socket, data []byte, flags SendRecvOption) {
-	if err := sock.SendZeroCopy(data, flags); err != nil {
+func (te *testEnv) SendZeroCopy(sock *Socket, data []byte, flags SendRecvOption,
+	hint unsafe.Pointer) {
+
+	if err := sock.SendZeroCopy(data, flags, hint); err != nil {
 		te.t.Errorf("Send failed")
 	}
 }
