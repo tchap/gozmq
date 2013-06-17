@@ -539,5 +539,3 @@ func (r *ZCFrameRegister) Remove(data, hint unsafe.Pointer) {
 // void *zmq_msg_data (zmq_msg_t *msg);
 // int zmq_msg_copy (zmq_msg_t *dest, zmq_msg_t *src);
 // int zmq_msg_move (zmq_msg_t *dest, zmq_msg_t *src);
-
-
