@@ -71,7 +71,8 @@ The API implemented by this package does not attempt to expose
 `zmq_msg_t` at all. Instead, `Recv()` and `Send()` both operate on byte
 slices, allocating and freeing the memory automatically. Currently this
 requires copying to/from C malloced memory, but a future implementation
-may be able to avoid this to a certain extent.
+may be able to avoid this to a certain extent. `SendZeroCopy()` is the first
+step in this direction.
 
 All major features are supported: contexts, sockets, devices, and polls.
 
@@ -125,16 +126,6 @@ func main() {
 ```
 
 ## Caveats
-
-### Zero-copy
-
-GoZMQ does not support zero-copy.
-
-GoZMQ does not attempt to expose `zmq_msg_t` at all. Instead, `Recv()` and `Send()`
-both operate on byte slices, allocating and freeing the memory automatically.
-Currently this requires copying to/from C malloced memory, but a future
-implementation may be able to avoid this to a certain extent.
-
 
 ### Memory management
 
