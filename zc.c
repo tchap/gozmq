@@ -28,7 +28,7 @@ gozmq_zc_sendmsg(void *socket, void *data, size_t dlen, int flags, void *hint)
 		return -1;
 
 #if ZMQ_VERSION_MAJOR == 3
-	if (zmq_sendmsg(socket, &msg, flags) == -1)
+	if (zmq_msg_send(&msg, socket, flags) == -1)
 		return -1;
 #elif ZMQ_VERSION_MAJOR == 2
 	if (zmq_send(socket, &msg, flags) == -1)
